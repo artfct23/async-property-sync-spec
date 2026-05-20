@@ -35,10 +35,10 @@
 Каждое событие несёт детерминированный `idempotency_key` формата `agent:{id}-prop:{id}-v:{version}-ts:{unix_ms}`. Воркер проверяет ключ в `idempotency_log` (PostgreSQL) перед обработкой — повторная доставка Kafka не приводит к дублю в API агрегатора.
 
 ### Version Guard (Защита от гонки данных)
-UPSERT в PostgreSQL содержит условие `WHERE property.version < EXCLUDED.version`. Сообщение с устаревшей версией (late arrival) отклоняется атомарно на уровне SQL — без application-level locking.
+UPSERT в PostgreSQL содержит условие `WHERE property.version < EXCLUDED.version`. Сообщение с устаревшей версией (late arrival) отклоняется атомарно на уровне SQL — без application-level locking. Паттерн реализует Optimistic Concurrency Control (OCC) без явных блокировок на уровне приложения.
 
 ### Dead Letter Queue (DLQ)
-После 3 неудачных попыток (5xx / timeout) или при первом non-retriable ответе (4xx) событие публикуется в `property.sync.failed.dlq`. Kafka offset коммитится немедленно — partition не блокируется poison pill-ом.
+После 3 неудачных попыток (5xx / timeout) или при первом non-retriable ответе (4xx) событие публикуется в `property.sync.failed.dlq`. Kafka offset коммитится немедленно — partition не блокируется poison pill-ом. Поддерживается ручной replay через Admin API и автоматический reprocessor с TTL-задержкой 1h.
 
 ### Two-Level Deduplication
 - **L1 — Redis** (`SET NX`, TTL 24h): fast path, in-memory, атомарный
